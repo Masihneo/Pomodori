@@ -1,0 +1,59 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35 SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Recreate Android source
+        run: |
+          cat ci-source-xz/part-*.b64 | base64 -d > source.tar.xz
+          echo "c825c55f9328ee21361889143d812b9ab527b3353bf9d1e8825c24a60bb51cd9  source.tar.xz" | sha256sum -c -
+          mkdir project
+          tar -xJf source.tar.xz -C project
+          find project -maxdepth 3 -type f | sort | head -100
+
+      - name: Unit tests and debug APK
+        working-directory: project
+        run: gradle testDebugUnitTest assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checkliste-debug-apk
+          path: project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checkliste-test-reports
+          path: project/app/build/reports/tests/
+          if-no-files-found: ignore
